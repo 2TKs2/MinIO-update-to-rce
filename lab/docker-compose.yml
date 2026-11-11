@@ -1,0 +1,56 @@
+
+name: minio-report-lab
+
+services:
+  minio:
+    build:
+      context: ./build
+      args:
+        MINIO_TAG: ${MINIO_TAG:-RELEASE.2023-08-16T20-17-30Z}
+        GO_IMAGE: ${GO_IMAGE:-golang:1.20}
+    image: ${MINIO_IMAGE:-lab/minio:2023-08-16}
+    container_name: minio-lab-target
+    user: "0:0"
+    restart: "no"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_CONSOLE_ADDRESS: ":9001"
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9100}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9101}:9001"
+    volumes:
+      - minio-data:/data
+    networks: [lab]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  seed:
+    image: ${MC_IMAGE:-quay.io/minio/mc:latest}
+    container_name: minio-lab-seed
+    profiles: ["seed"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/lab/seed.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      LAB_BUCKET: ${LAB_BUCKET:-lab-bucket}
+    volumes:
+      - ./scripts/seed.sh:/lab/seed.sh:ro
+    networks: [lab]
+    restart: "no"
+
+volumes:
+  minio-data:
+
+networks:
+  lab:
+    name: minio-report-lab
